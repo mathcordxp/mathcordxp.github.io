@@ -154,7 +154,7 @@
   </head>
   <body>
     <div class="header">
-      <a href="./index.html" class="header-logo">
+      <a href="../index.html" class="header-logo">
         <span>StrongDog</span>
         <span>XP</span>
       </a>
@@ -167,7 +167,6 @@
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1609993827735056"
           crossorigin="anonymous"
         ></script>
-        <!-- in game ads -->
         <ins
           class="adsbygoogle"
           style="display: inline-block; width: 120px; height: 300px"
@@ -185,7 +184,6 @@
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1609993827735056"
           crossorigin="anonymous"
         ></script>
-        <!-- in game ads -->
         <ins
           class="adsbygoogle"
           style="display: inline-block; width: 120px; height: 300px"
@@ -212,14 +210,12 @@
 
     <div class="cards-section">
       <h2>Recommended Games</h2>
-      <div class="card-container" id="cardContainer">
-        <!-- Cards will be loaded here -->
-      </div>
+      <div class="card-container" id="cardContainer"></div>
     </div>
 
     <script type="module">
-      import games from "./cards-data.js";
-      import { siteMapping } from "./site-mapping.js";
+      import games from "../cards-data.js";
+      import { siteMapping } from "../site-mapping.js";
 
       document.addEventListener("DOMContentLoaded", async function () {
         const urlParams = new URLSearchParams(window.location.search);
@@ -229,106 +225,102 @@
         const favoriteIcon = document.getElementById("favoriteIcon");
         const fullscreenButton = document.getElementById("fullscreenButton");
 
-        console.log("[DEBUG] URL gameId:", gameId);
-
         async function fileExists(url) {
-          console.log("[DEBUG] Checking file:", url);
           try {
             const response = await fetch(url, { method: "HEAD" });
-            console.log("[DEBUG] fileExists response:", url, response.ok);
             return response.ok;
-          } catch (e) {
-            console.error("[DEBUG] fileExists error:", e);
+          } catch {
             return false;
           }
         }
 
         function getCurrentKeyHostOnly() {
           const host = window.location.host;
-          console.log("[DEBUG] Current key for siteMapping (host only):", host);
           return host;
         }
 
         function getBaseURLForPage(page) {
           const currentKey = getCurrentKeyHostOnly();
           if (!page || page === 1) {
-            console.log("[DEBUG] page not defined or =1, using local './'");
-            return "./";
+            return "../";
           }
 
           const arr = siteMapping[currentKey];
           if (!arr) {
-            console.warn("[DEBUG] No siteMapping entry found for key:", currentKey, "Using './'");
-            return "./";
+            return "../";
           }
           const index = page - 2;
           if (arr[index]) {
-            console.log("[DEBUG] Found site-mapping base for page", page, ":", arr[index]);
-            return arr[index];
+            return arr[index].replace(/^\.\/$/, "../");
           } else {
-            console.warn("[DEBUG] No mapping for page", page, "at key:", currentKey, "fallback to './'");
-            return "./";
+            return "../";
           }
         }
 
-        async function findPlayableFile(basePath) {
-          console.log("[DEBUG] findPlayableFile for basePath:", basePath);
-          const possiblePaths = [
-            basePath + "game/index.html",
-            basePath + "game/base.html",
-            basePath + "gamereal/index.html",
-            basePath + "gamereal/base.html",
-            basePath + "index.html",
-            basePath + "base.html"
-          ];
+        function adjustHrefPath(path, page) {
+          path = path.replace(/^\.\//, "").replace(/^\//, "");
+          const baseURL = getBaseURLForPage(page);
 
-          console.log("[DEBUG] Checking possible paths:", possiblePaths);
-
-          for (const p of possiblePaths) {
-            if (await fileExists(p)) {
-              return p;
+          let finalPath;
+          if (baseURL === "../") {
+            finalPath = "../" + path;
+          } else {
+            if (!baseURL.endsWith("/")) {
+              finalPath = baseURL + "/" + path;
+            } else {
+              finalPath = baseURL + path;
             }
           }
-          return null;
+          return finalPath;
         }
 
-        // If no playable file found in the directories, use the original href directly.
-        // If that fails too, we can't do anything else. But you stated it WILL work, so no 404 in that scenario.
-        async function getEmbedPath(adjustedHref, originalHref) {
-          console.log("[DEBUG] Original href from cards-data.js:", originalHref);
-          let cleanHref = adjustedHref.replace(/^\.\//, "");
-
-          let basePath = cleanHref
+        async function getEmbedPath(adjustedHref, originalHref, page) {
+          let cleanHref = adjustedHref
             .replace(/index\.html$/, "")
             .replace(/base\.html$/, "")
             .replace(/\.html$/, "");
+          if (!cleanHref.endsWith("/")) cleanHref += "/";
 
-          if (!basePath.endsWith("/")) {
-            basePath += "/";
+          const pathsToTry = [
+            cleanHref + "game/index.html",
+            cleanHref + "game/base.html",
+            cleanHref + "gamereal/index.html",
+            cleanHref + "gamereal/base.html",
+            cleanHref + "index.html",
+            cleanHref + "base.html"
+          ];
+
+          for (const path of pathsToTry) {
+            if (await fileExists(path)) {
+              return path;
+            }
           }
 
-          console.log("[DEBUG] Base path for playable check:", basePath);
-
-          let playableFile = await findPlayableFile(basePath);
-          if (playableFile) {
-            return playableFile;
-          }
-
-          console.log("[DEBUG] No playable file found in main paths, now trying original href directly:", originalHref);
-
-          // Use the original href from cards-data.js directly
-          // This one WILL work according to your requirement
-          return originalHref;
+          return adjustHrefPath(originalHref, page);
         }
 
         function embedGame(gamePath, title) {
-          console.log("[DEBUG] Embedding game:", gamePath, "Title:", title);
-          var iframe = document.createElement("iframe");
+          const iframe = document.createElement("iframe");
           iframe.src = gamePath;
           gameContainer.innerHTML = "";
           gameContainer.appendChild(iframe);
           gameTitleElement.textContent = title;
           document.title = title + " - StrongDog XP";
+
+          // Attach onload to the iframe to ensure the game is fully loaded before counting a view
+          iframe.onload = function() {
+            // Now record the view once the iframe content has loaded
+            fetch(
+              "https://script.google.com/macros/s/AKfycbx1xYwL2QqkOQHyeCWIVSMVLP_XXts5zpb0M-vbvlRl1MpRYYcv4NI-i8OaGc0YP0wpsg/exec?title=" +
+                encodeURIComponent(title),
+              {
+                method: "GET",
+              }
+            )
+              .then((response) => response.text())
+              .then((result) => console.log("[DEBUG] View recorded:", result))
+              .catch((error) => console.error("[DEBUG] Error recording view:", error));
+          };
         }
 
         let selectedGame = null;
@@ -337,20 +329,15 @@
           selectedGame = games.find(g => g.id === idNum);
         }
 
-        let title = "Loading...";
         gameTitleElement.textContent = "Loading...";
         document.title = "Loading... - StrongDog XP";
 
         if (!selectedGame) {
-          console.log("[DEBUG] No selected game found for id:", gameId);
-          // No fallback since we have no original href at all
-          embedGame("./404.html", "Not Found");
+          embedGame("../404.html", "Not Found");
         } else {
-          console.log("[DEBUG] Selected game:", selectedGame);
-          title = selectedGame.name;
-
-          const page = selectedGame.page; 
+          const page = selectedGame.page;
           const baseURL = getBaseURLForPage(page);
+
           let adjustedHref = selectedGame.href.replace(/^\.\//, "");
           if (!baseURL.endsWith("/")) {
             adjustedHref = baseURL + "/" + adjustedHref;
@@ -358,27 +345,24 @@
             adjustedHref = baseURL + adjustedHref;
           }
 
-          console.log("[DEBUG] Final adjusted HREF for embedding:", adjustedHref);
+          const embedPath = await getEmbedPath(adjustedHref, selectedGame.href, page);
+          embedGame(embedPath, selectedGame.name);
 
-          const embedPath = await getEmbedPath(adjustedHref, selectedGame.href);
-          embedGame(embedPath, title);
-
-          // Favorite logic
           function toggleFavorite() {
             let favorites = JSON.parse(localStorage.getItem("favorites") || "{}");
-            const imagePath = "./img/" + title + ".jpg";
+            const imagePath = "../img/" + selectedGame.name + ".jpg";
 
-            if (favorites[title]) {
-              delete favorites[title];
+            if (favorites[selectedGame.name]) {
+              delete favorites[selectedGame.name];
             } else {
-              favorites[title] = {
-                path: selectedGame ? selectedGame.href : "",
+              favorites[selectedGame.name] = {
+                path: selectedGame.href,
                 image: imagePath,
               };
             }
 
             localStorage.setItem("favorites", JSON.stringify(favorites));
-            updateFavoriteIcon(favorites, title);
+            updateFavoriteIcon(favorites, selectedGame.name);
           }
 
           function updateFavoriteIcon(favorites, title) {
@@ -390,13 +374,12 @@
           }
 
           const favorites = JSON.parse(localStorage.getItem("favorites") || "{}");
-          updateFavoriteIcon(favorites, title);
+          updateFavoriteIcon(favorites, selectedGame.name);
 
           favoriteIcon.addEventListener("click", function () {
             toggleFavorite();
           });
 
-          // Fullscreen logic
           fullscreenButton.addEventListener("click", function () {
             if (gameContainer.requestFullscreen) {
               gameContainer.requestFullscreen();
@@ -407,93 +390,50 @@
             }
           });
 
-          // Logging to Google Script
-          window.onload = function () {
-            fetch(
-              "https://script.google.com/macros/s/AKfycbx1xYwL2QqkOQHyeCWIVSMVLP_XXts5zpb0M-vbvlRl1MpRYYcv4NI-i8OaGc0YP0wpsg/exec?title=" +
-                encodeURIComponent(title),
-              {
-                method: "GET",
+          const cardContainer = document.getElementById("cardContainer");
+
+          function adjustImgPath(path, page) {
+            path = path.replace(/^\.\//, "").replace(/^\//, "").replace(/^img\//, "");
+            const baseURL = getBaseURLForPage(page);
+
+            let finalImgPath;
+            if (baseURL === "../") {
+              finalImgPath = "../img/" + path;
+            } else {
+              if (!baseURL.endsWith("/")) {
+                finalImgPath = baseURL + "/img/" + path;
+              } else {
+                finalImgPath = baseURL + "img/" + path;
               }
-            )
-              .then((response) => response.text())
-              .then((result) => console.log("[DEBUG] Google Script response:", result))
-              .catch((error) => console.error("[DEBUG] Google Script error:", error));
-          };
-        }
-
-        // Recommended Games
-        const cardContainer = document.getElementById("cardContainer");
-
-        function adjustHrefPath(path, page) {
-          console.log("[DEBUG] adjustHrefPath input:", path, "page:", page);
-          path = path.replace(/^\.\//, "").replace(/^\//, "");
-          const baseURL = getBaseURLForPage(page);
-
-          let finalPath;
-          if (baseURL === "./") {
-            finalPath = "./" + path;
-          } else {
-            if (!baseURL.endsWith("/")) {
-              finalPath = baseURL + "/" + path;
-            } else {
-              finalPath = baseURL + path;
             }
+            return finalImgPath;
           }
 
-          console.log("[DEBUG] adjustHrefPath finalPath:", finalPath);
-          return finalPath;
+          const randomGames = games
+            .slice()
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 10);
+
+          randomGames.forEach((game) => {
+            const { imgSrc, name, id } = game;
+            const adjustedImgSrc = adjustImgPath(imgSrc, game.page);
+
+            const card = document.createElement("a");
+            card.className = "card";
+            card.href = `../play/?id=${id}`;
+
+            const img = document.createElement("img");
+            img.src = adjustedImgSrc;
+            img.alt = name;
+            card.appendChild(img);
+
+            const figcaption = document.createElement("figcaption");
+            figcaption.textContent = name;
+            card.appendChild(figcaption);
+
+            cardContainer.appendChild(card);
+          });
         }
-
-        function adjustImgPath(path, page) {
-          console.log("[DEBUG] adjustImgPath input:", path, "page:", page);
-          path = path.replace(/^\.\//, "").replace(/^\//, "").replace(/^img\//, "");
-          const baseURL = getBaseURLForPage(page);
-
-          let finalImgPath;
-          if (baseURL === "./") {
-            finalImgPath = "./img/" + path;
-          } else {
-            if (!baseURL.endsWith("/")) {
-              finalImgPath = baseURL + "/img/" + path;
-            } else {
-              finalImgPath = baseURL + "img/" + path;
-            }
-          }
-
-          console.log("[DEBUG] adjustImgPath finalPath:", finalImgPath);
-          return finalImgPath;
-        }
-
-        function getCardHTML(gameObject) {
-          const { href, imgSrc, name, page } = gameObject;
-          const adjustedHref = adjustHrefPath(href, page);
-          const adjustedImgSrc = adjustImgPath(imgSrc, page);
-
-          console.log("[DEBUG] Creating card for game:", name, "href:", adjustedHref);
-
-          const card = document.createElement("a");
-          card.className = "card";
-          card.href = adjustedHref + `?id=${gameObject.id}`;
-
-          const img = document.createElement("img");
-          img.src = adjustedImgSrc;
-          img.alt = name;
-          card.appendChild(img);
-
-          const figcaption = document.createElement("figcaption");
-          figcaption.textContent = name;
-          card.appendChild(figcaption);
-
-          return card;
-        }
-
-        const randomGames = games.slice().sort(() => 0.5 - Math.random()).slice(0, 10);
-        console.log("[DEBUG] Random recommended games:", randomGames.map(g => g.name));
-        randomGames.forEach((game) => {
-          const card = getCardHTML(game);
-          cardContainer.appendChild(card);
-        });
       });
     </script>
   </body>
